@@ -18,8 +18,8 @@ You should be able to use this along with any of the other eye types if you so d
 #include "terminatorEye.h"
 
 // === WiFi + OTA Setup ===
-const char* ssid = "ForceHub";
-const char* password = "ddbear74";
+const char* ssid = "**********";
+const char* password = "**********";
 WebServer server(80);
 WiFiUDP Udp;
 const int localPort = 8000; // OSC port
