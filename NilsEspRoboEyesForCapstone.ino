@@ -5,25 +5,30 @@ Manually set the CS pin to low to render to that screen, but make sure to set th
 Although three screens are possible the third partially renders one of the other screens no matter what causing it to behave erratically.
 Terminator Eye library and the Uncanny Eyes sketch is avialable at https://github.com/adafruit/Uncanny_Eyes/
 You should be able to use this along with any of the other eye types if you so desire.
+
+  const char* apSSID = "ESP32-RoboEyes";
+  const char* apPassword = "robot";  // optional; use NULL for open network
+For some reason the SSID doesn't work though so it is ESP_D84689
 */
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
-//#include <WiFi.h>
-//#include <WiFiUdp.h>
-//#include <OSCMessage.h>
-//#include <WebServer.h>
-//#include <ElegantOTA.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <OSCMessage.h>
+#include <WebServer.h>
+#include <ElegantOTA.h>
 #include "terminatorEye.h"
-/*
+
 // === WiFi + OTA Setup ===
-const char* ssid = "**********";
-const char* password = "**********";
 WebServer server(80);
 WiFiUDP Udp;
 const int localPort = 8000; // OSC port
-*/
+
+const char* apSSID = "ESP32-RoboEyes";
+const char* apPassword = "robot";  // optional; use NULL for open network
+
 // === Display Config ===
 #define TFT_CS     21
 #define TFT_CS2    22
@@ -64,22 +69,22 @@ Eye eyeR = {.csPin = TFT_CS2};
 void setup() {
   Serial.begin(115200);
 
-  /*WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500); Serial.print(".");
-  }
-  Serial.println(" connected!");
-  Serial.print("IP: "); Serial.println(WiFi.localIP());
+  WiFi.softAP(apSSID, apPassword);
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("Access Point started. IP address: ");
+  Serial.println(myIP);
+  Serial.print("My SSID is: ");
+  Serial.println(apSSID);
 
   Udp.begin(localPort);
   server.on("/", []() {
     server.send(200, "text/html", "<h1>ESP32 Eye Online</h1><a href=\"/update\">Update Firmware</a>");
   });
   ElegantOTA.begin(&server);  // OTA Updating
-  server.begin();*/
+  server.begin();
 
   tft.initR(INITR_144GREENTAB);
+  tft.setSPISpeed(24000000);
   tft.fillScreen(ST77XX_BLACK);
 
   pinMode(TFT_CS, OUTPUT);
@@ -87,9 +92,9 @@ void setup() {
 }
 
 void loop() {
-  /*server.handleClient();  // Handles OTA updates
+  server.handleClient();  // Handles OTA updates
   ElegantOTA.loop();
-  handleOSC();*/
+  handleOSC();
 
   updateEye(eyeL);
   updateEye(eyeR);
@@ -141,8 +146,8 @@ void drawEye(Eye &eye) {
   }
 
   maskCorners(canvas);
-  //digitalWrite(TFT_CS, HIGH);
-  //digitalWrite(TFT_CS2, HIGH);
+  digitalWrite(TFT_CS, HIGH);
+  digitalWrite(TFT_CS2, HIGH);
   digitalWrite(eye.csPin, LOW);
   tft.drawRGBBitmap(0, 0, canvas.getBuffer(), 128, 128);
   digitalWrite(eye.csPin, HIGH);
@@ -267,7 +272,7 @@ void lookRight(Eye &eye,  int duration = 1000) {
   eye.emotionStart = millis();
   eye.emotionDuration = duration;
 }
-/*
+
 // === OSC Input ===
 void handleOSC() {
   int size;
@@ -287,4 +292,4 @@ void handleOSC() {
       Serial.println(error);
     }
   }
-}*/
+}
