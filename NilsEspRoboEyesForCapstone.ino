@@ -315,7 +315,7 @@ void triggerExpression(Eye &eye, uint16_t tint, int duration = 1000) {
 
 //change the goalX or goalY to make the eye look in other directions.
 //Once I know the number range map it to the eye movement range
-void lookDirection(Eye &eye,  int duration = 1000, float dir) {
+void lookDirection(Eye &eye, float dir, int duration = 1000) {
   if (dir > 0.5) {
     eye.goalX = 88; // look right
     eye.goalY = 64;
@@ -330,6 +330,7 @@ void lookDirection(Eye &eye,  int duration = 1000, float dir) {
 
 // === OSC Input ===
 void handleOSC() {
+  OSCMessage msg;
   int size = Udp.parsePacket();
   if (size > 0) {
     uint8_t buffer[255];
@@ -339,8 +340,8 @@ void handleOSC() {
     if (!msg.hasError()) {
       if (msg.fullMatch("/cabinet")) {
         float value = msg.getFloat(0);
-        trigerExpression(eyeL, ST77XX_GREEN, 3000);
-        trigerExpression(eyeR, ST77XX_RED, 3000);
+        triggerExpression(eyeL, ST77XX_GREEN, 3000);
+        triggerExpression(eyeR, ST77XX_RED, 3000);
       }
     } else {
       OSCErrorCode error = msg.getError();
