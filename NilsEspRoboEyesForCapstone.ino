@@ -19,15 +19,17 @@ For some reason the SSID doesn't work though so it is ESP_D84689
 #include <OSCMessage.h>
 #include <WebServer.h>
 #include <ElegantOTA.h>
+#include <ESPmDNS.h>
 #include "terminatorEye.h"
 
 // === WiFi + OTA Setup ===
+const char* ssid = "SonOfPaulSwift";
+const char* password = "thankyou";
 WebServer server(80);
 WiFiUDP Udp;
 const int localPort = 8000; // OSC port
-
-const char* apSSID = "ESP32-RoboEyes";
-const char* apPassword = "robot";  // optional; use NULL for open network
+int displayTime = 0;
+char ipBuf[20];
 
 // === Display Config ===
 #define TFT_CS     21
@@ -61,6 +63,8 @@ struct Eye {
   uint16_t tintColor = 0xFFFF;
   unsigned long emotionStart = 0;
   unsigned long emotionDuration = 0;
+  unsigned long moveStart = 0;
+  unsigned long moveDuration = 0;
 };
 
 Eye eyeL = {.csPin = TFT_CS};
@@ -69,12 +73,25 @@ Eye eyeR = {.csPin = TFT_CS2};
 void setup() {
   Serial.begin(115200);
 
-  WiFi.softAP(apSSID, apPassword);
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("Access Point started. IP address: ");
-  Serial.println(myIP);
-  Serial.print("My SSID is: ");
-  Serial.println(apSSID);
+  //KEEP ONLY ONE ACTIVE DEPENDING ON IF YOU WANT TO
+  //CONNECT TO A ROUTER OR HOST.
+  WiFi.begin(ssid, password);
+  //WiFi.softAP(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(300);
+    Serial.print(".");
+  }
+  IPAddress myIP = WiFi.localIP();
+  String ipStr = myIP.toString();
+  ipStr.toCharArray(ipBuf, 20);
+  drawtext(ipBuf, ST77XX_BLACK);
+
+  if (!MDNS.begin("cabinet2")) {  // <<<<<<<<<<<< UNIQUE PER DEVICE
+    Serial.println("Error starting mDNS");
+  } else {
+    Serial.println("mDNS responder started as cabinet2.local");
+  }
 
   Udp.begin(localPort);
   server.on("/", []() {
@@ -96,12 +113,40 @@ void loop() {
   ElegantOTA.loop();
   handleOSC();
 
-  updateEye(eyeL);
-  updateEye(eyeR);
-  drawEye(eyeL);
-  drawEye(eyeR);
-
+  if (displayTime <= 5) {
+    unsigned long t = millis() % 1000;
+    if (t <= 1000) {
+      drawtext(ipBuf, ST77XX_BLACK);
+      displayTime++;
+    }
+  } else {
+    updateEye(eyeL);
+    updateEye(eyeR);
+    drawEye(eyeL);
+    drawEye(eyeR);
+  }
   delay(30);
+}
+
+void drawtext(char *text, uint16_t color) {
+  digitalWrite(TFT_CS2, HIGH);
+  digitalWrite(TFT_CS, LOW);
+  tft.fillScreen(ST77XX_WHITE);
+  tft.setCursor(0, 0);
+  tft.setTextColor(color);
+  tft.setTextWrap(true);
+  tft.print(text);
+  digitalWrite(TFT_CS, HIGH);
+  delay(5);
+  digitalWrite(TFT_CS, HIGH);
+  digitalWrite(TFT_CS2, LOW);
+  tft.fillScreen(ST77XX_WHITE);
+  tft.setCursor(0, 0);
+  tft.setTextColor(color);
+  tft.setTextWrap(true);
+  tft.print(text);
+  digitalWrite(TFT_CS2, HIGH);
+  delay(5);
 }
 
 // === Eye Update Logic ===
@@ -116,9 +161,12 @@ void updateEye(Eye &eye) {
     eye.nextBlink = random(2000, 7000); //change these numbers to make longer/shorter blinks
   }
 
- if (abs(eye.x - eye.goalX) < 8 && abs(eye.y - eye.goalY) < 8) {
+ if (abs(eye.x - eye.goalX) < 8 && abs(eye.y - eye.goalY) < 8 && eye.moveStart == 0) {
     eye.goalX = random(52, 76);  // within sclera bounds
     eye.goalY = random(52, 76);
+ } else if (millis() - eye.moveStart <= eye.moveDuration) {
+    eye.moveStart = 0;
+    eye.moveDuration = 0;
  }
   eye.x = lerp(eye.x, eye.goalX, 0.15);
   eye.y = lerp(eye.y, eye.goalY, 0.15);
@@ -266,27 +314,35 @@ void triggerExpression(Eye &eye, uint16_t tint, int duration = 1000) {
 }
 
 //change the goalX or goalY to make the eye look in other directions.
-void lookRight(Eye &eye,  int duration = 1000) {
-  eye.goalX = 88; // look right
-  eye.goalY = 64;
-  eye.emotionStart = millis();
-  eye.emotionDuration = duration;
+//Once I know the number range map it to the eye movement range
+void lookDirection(Eye &eye,  int duration = 1000, float dir) {
+  if (dir > 0.5) {
+    eye.goalX = 88; // look right
+    eye.goalY = 64;
+  }
+  else {
+    eye.goalX = 50; //look left
+    eye.goalY = 64;
+  }
+  eye.moveStart = millis();
+  eye.moveDuration = duration;
 }
 
 // === OSC Input ===
 void handleOSC() {
-  int size;
-  if ((size = Udp.parsePacket()) > 0) {
+  int size = Udp.parsePacket();
+  if (size > 0) {
     uint8_t buffer[255];
     size = Udp.read(buffer, 255);
-
-    OSCMessage msg;
-    msg.fill(buffer, size); 
+    msg.fill(buffer, size);
 
     if (!msg.hasError()) {
-      triggerExpression(eyeR, 0x07df, 300);
+      if (msg.fullMatch("/cabinet")) {
+        float value = msg.getFloat(0);
+        trigerExpression(eyeL, ST77XX_GREEN, 3000);
+        trigerExpression(eyeR, ST77XX_RED, 3000);
       }
-    else {
+    } else {
       OSCErrorCode error = msg.getError();
       Serial.print("OSC Error: ");
       Serial.println(error);
