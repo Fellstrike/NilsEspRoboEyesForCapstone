@@ -11,15 +11,15 @@ You should be able to use this along with any of the other eye types if you so d
 For some reason the SSID doesn't work though so it is ESP_D84689
 */
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7735.h>
-#include <SPI.h>
+#include <Adafruit_GFX.h>     // Core graphics library
+#include <Adafruit_ST7735.h>  // Hardware-specific library for ST7735
+#include <SPI.h>              //SPI Library
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <OSCMessage.h>
 #include <WebServer.h>
-#include <ElegantOTA.h>
 #include <ESPmDNS.h>
+#include <ElegantOTA.h>
 #include "terminatorEye.h"
 
 // === WiFi + OTA Setup ===
@@ -27,7 +27,7 @@ const char* ssid = "SonOfPaulSwift";
 const char* password = "thankyou";
 WebServer server(80);
 WiFiUDP Udp;
-const int localPort = 8000; // OSC port
+const int localPort = 4202; // OSC port
 int displayTime = 0;
 char ipBuf[20];
 
@@ -70,14 +70,35 @@ struct Eye {
 Eye eyeL = {.csPin = TFT_CS};
 Eye eyeR = {.csPin = TFT_CS2};
 
+const uint16_t emotionTints[] = {
+  0xf800, // Red       
+  0xf81f, // Magenta   
+  0x001f, // Blue      
+  0x07ff, // Aqua      
+  0xffe0, // Yellow    
+  0x07e0, // Green     
+  0xfae0, // Orange    
+  0x0000, // Black     
+  0xffff, // White     
+  0x7bef, // Gray      
+  0x780f, // Maroon  
+  0x3c10, // Olive    
+  0x03ff, // Cyan      
+  0xfc1f, // Pink    
+  0x01f0, // Teal     
+  0x83e0  // Brown     
+};
+const int NUM_TINTS = sizeof(emotionTints);
+  
+
 void setup() {
   Serial.begin(115200);
-
+  /*
   //KEEP ONLY ONE ACTIVE DEPENDING ON IF YOU WANT TO
   //CONNECT TO A ROUTER OR HOST.
   WiFi.begin(ssid, password);
-  //WiFi.softAP(ssid, password);
-  
+  //WiFi.softAP(apSSID, apPassword);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(300);
     Serial.print(".");
@@ -87,18 +108,18 @@ void setup() {
   ipStr.toCharArray(ipBuf, 20);
   drawtext(ipBuf, ST77XX_BLACK);
 
-  if (!MDNS.begin("cabinet2")) {  // <<<<<<<<<<<< UNIQUE PER DEVICE
+  if (!MDNS.begin("cabinet1")) {  // <<<<<<<<<<<< UNIQUE PER DEVICE
     Serial.println("Error starting mDNS");
   } else {
-    Serial.println("mDNS responder started as cabinet2.local");
+    Serial.println("mDNS responder started as cabinet1.local");
   }
 
   Udp.begin(localPort);
   server.on("/", []() {
-    server.send(200, "text/html", "<h1>ESP32 Eye Online</h1><a href=\"/update\">Update Firmware</a>");
+    server.send(200, "text/html", "<h1>ESP32 Ghost Balls Online</h1><a href=\"/update\">Update Firmware</a>");
   });
   ElegantOTA.begin(&server);  // OTA Updating
-  server.begin();
+  server.begin();*/
 
   tft.initR(INITR_144GREENTAB);
   tft.setSPISpeed(24000000);
@@ -108,11 +129,20 @@ void setup() {
   pinMode(TFT_CS2, OUTPUT);
 }
 
-void loop() {
-  server.handleClient();  // Handles OTA updates
-  ElegantOTA.loop();
-  handleOSC();
+//adds an expression and causes the eye to grow the color passed in.
+void triggerExpression(Eye &eye, uint16_t tint, int duration = 1500) {
+  eye.glow = true;
+  eye.tintColor = tint;
+  eye.glowAlpha = 200; // strong glow
+  eye.emotionStart = millis();
+  eye.emotionDuration = duration;
+}
 
+void loop() {
+  ///server.handleClient();  // Handles OTA updates
+  //ElegantOTA.loop();
+ //handleOSC();
+/*
   if (displayTime <= 5) {
     unsigned long t = millis() % 1000;
     if (t <= 1000) {
@@ -124,7 +154,26 @@ void loop() {
     updateEye(eyeR);
     drawEye(eyeL);
     drawEye(eyeR);
+  }*/
+  unsigned long t = millis() % 10000;
+  if (t < 100 && eyeL.emotionDuration <= 0) {
+    uint16_t tempTint = emotionTints[random(NUM_TINTS)];
+    int emT = random(2500);
+    triggerExpression(eyeL, tempTint, emT);
+    Serial.print("Expression Triggered tint is :");
+    Serial.println(String(tempTint));
+  } else if (t < 100 && eyeR.emotionDuration <= 0) {
+    uint16_t tempTint = emotionTints[random(NUM_TINTS)];
+    int emT = random(2500);
+    triggerExpression(eyeR, tempTint, emT);
+    Serial.print("Expression Triggered tint is :");
+    Serial.println(String(tempTint));
   }
+
+  updateEye(eyeL);
+  updateEye(eyeR);
+  drawEye(eyeL);
+  drawEye(eyeR);
   delay(30);
 }
 
@@ -172,10 +221,16 @@ void updateEye(Eye &eye) {
   eye.y = lerp(eye.y, eye.goalY, 0.15);
 
   if (eye.glow && millis() - eye.emotionStart > eye.emotionDuration) {
-    eye.glowAlpha = max(0, eye.glowAlpha - 8);
-    if (eye.glowAlpha == 0) {
+    if (eye.glowAlpha > 8) {
+      eye.glowAlpha -= 8;
+    } else {
+      eye.glowAlpha = 0;
       eye.glow = false;
+      // only reset tint when fully faded
+      eye.tintColor = 0xFFFF;
     }
+    eye.emotionDuration = 0;
+    eye.emotionStart = 0;
   }
 }
 
@@ -302,15 +357,6 @@ uint16_t blendColor(uint16_t base, uint16_t tint, uint8_t alpha) {
   uint8_t b = b1 + ((b2 - b1) * alpha) / 255;
 
   return (r << 11) | (g << 5) | b;
-}
-
-//adds an expression and causes the eye to grow the color passed in.
-void triggerExpression(Eye &eye, uint16_t tint, int duration = 1000) {
-  eye.glow = true;
-  eye.tintColor = tint;
-  eye.glowAlpha = 192; // strong glow
-  eye.emotionStart = millis();
-  eye.emotionDuration = duration;
 }
 
 //change the goalX or goalY to make the eye look in other directions.
